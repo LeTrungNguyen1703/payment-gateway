@@ -1,6 +1,9 @@
 #!/bin/sh
 set -e
 
+# Small startup banner for easier debugging
+echo "[entrypoint] running /app/docker-entrypoint.sh (pid $$)"
+
 # Ensure we have a DATABASE_URL at runtime
 if [ -z "$DATABASE_URL" ]; then
   echo "[entrypoint][error] DATABASE_URL is not set. Set DATABASE_URL in your environment (Railway -> Variables)."

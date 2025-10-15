@@ -7,11 +7,13 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { CacheableMemory, Keyv } from 'cacheable';
 import KeyvRedis from '@keyv/redis';
 import { AblyModule } from './ably/ably.module';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
   imports: [
     PrismaModule,
     AblyModule,
+    HttpModule,
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,

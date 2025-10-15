@@ -6,7 +6,9 @@ WORKDIR /app
 
 # Copy package metadata trước để tối ưu cache
 COPY package*.json ./
-RUN npm ci --silent
+# Use npm install in the builder to avoid CI lockfile strictness inside the image
+# (we run npm install locally to keep package-lock.json up-to-date)
+RUN npm install --verbose
 
 # Copy Prisma và source code
 COPY prisma ./prisma
