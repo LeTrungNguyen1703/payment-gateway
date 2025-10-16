@@ -7,6 +7,7 @@ import {
 } from 'nest-keycloak-connect';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { KeycloakAdminService } from './keycloak-admin.service';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { APP_GUARD } from '@nestjs/core';
     }),
   ],
   providers: [
+    KeycloakAdminService,
     // Global guards to protect all routes by default
     // Remove or comment out if you want to manually apply guards per route
     {
@@ -46,6 +48,6 @@ import { APP_GUARD } from '@nestjs/core';
       useClass: RoleGuard,
     },
   ],
-  exports: [KeycloakConnectModule],
+  exports: [KeycloakConnectModule, KeycloakAdminService],
 })
 export class KeycloakModule {}

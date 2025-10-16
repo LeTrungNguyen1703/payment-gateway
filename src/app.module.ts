@@ -7,6 +7,8 @@ import { AblyModule } from './ably/ably.module';
 import { HttpModule } from '@nestjs/axios';
 import { KeycloakModule } from './keycloak/keycloak.module';
 import { RedisCacheModule } from './cache/redis-cache.module';
+import { UserModule } from './user/user.module';
+import keycloakConfiguation from './keycloak/config/keycloak.configuation';
 
 @Module({
   imports: [
@@ -17,9 +19,10 @@ import { RedisCacheModule } from './cache/redis-cache.module';
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
-      load: [],
+      load: [keycloakConfiguation],
     }),
     RedisCacheModule,
+    UserModule,
   ],
   controllers: [AppController],
   providers: [AppService],
