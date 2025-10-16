@@ -6,7 +6,8 @@ import { LoggingInterceptor } from './logging.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  await app.listen(process.env.PORT ?? 3001);
+
+  // Configure global pipes and interceptors before the app starts
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalInterceptors(new LoggingInterceptor());
 
@@ -38,6 +39,9 @@ async function bootstrap() {
     jsonDocumentUrl: 'api-json',
     yamlDocumentUrl: 'api-yaml',
   });
+
+  // Start listening after all setup (including Swagger) is done
+  await app.listen(process.env.PORT ?? 3001);
 }
 
 bootstrap();

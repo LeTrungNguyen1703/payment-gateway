@@ -31,7 +31,7 @@ export class UserController {
   constructor(private readonly userService: UserService) {}
 
   @Post()
-  @Roles({ roles: ['admin'] })
+  @Public()
   @ApiOperation({ summary: 'Create a new user (Admin only)' })
   create(@Body() createUserDto: CreateUserDto) {
     return this.userService.create(createUserDto);

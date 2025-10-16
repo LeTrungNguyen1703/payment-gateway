@@ -67,9 +67,11 @@ export class KeycloakAdminService implements OnModuleInit {
 
     const { password, ...userDetails } = userData;
 
+    let createdUser;
+
     try {
       // Create user
-      const createdUser = await this.kcAdminClient.users.create({
+      createdUser = await this.kcAdminClient.users.create({
         realm: this.configService.get<string>(KEYCLOAK_CONFIG_KEY.REALM_NAME),
         username: userDetails.username || userDetails.email,
         email: userDetails.email,
@@ -118,6 +120,7 @@ export class KeycloakAdminService implements OnModuleInit {
       return createdUser;
     } catch (error) {
       this.logger.error('Failed to create user in Keycloak', error);
+      await this.kcAdminClient.users.del(createdUser.id);
       throw error;
     }
   }
