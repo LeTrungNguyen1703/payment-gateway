@@ -13,4 +13,3 @@ export const CurrentUserId = createParamDecorator(
     return request.user?.sub; // Keycloak ID
   },
 );
-

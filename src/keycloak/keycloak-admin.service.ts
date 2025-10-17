@@ -148,6 +148,26 @@ export class KeycloakAdminService implements OnModuleInit {
     }
   }
 
+  async resetPassword(keycloakId: string, newPassword: string) {
+    await this.ensureAuthenticated();
+
+    try {
+      await this.kcAdminClient.users.resetPassword({
+        realm: this.configService.get<string>(KEYCLOAK_CONFIG_KEY.REALM_NAME),
+        id: keycloakId,
+        credential: {
+          temporary: false,
+          type: 'password',
+          value: newPassword,
+        },
+      });
+      this.logger.log(`Password reset for user: ${keycloakId}`);
+    } catch (error) {
+      this.logger.error('Failed to reset password in Keycloak', error);
+      throw error;
+    }
+  }
+
   async getUserById(keycloakId: string) {
     await this.ensureAuthenticated();
 

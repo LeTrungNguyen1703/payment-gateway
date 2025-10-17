@@ -8,6 +8,7 @@ import { HttpModule } from '@nestjs/axios';
 import { KeycloakModule } from './keycloak/keycloak.module';
 import { RedisCacheModule } from './cache/redis-cache.module';
 import { UserModule } from './user/user.module';
+import { AuthModule } from './auth/auth.module';
 import keycloakConfiguation from './keycloak/config/keycloak.configuation';
 
 @Module({
@@ -23,6 +24,7 @@ import keycloakConfiguation from './keycloak/config/keycloak.configuation';
     }),
     RedisCacheModule,
     UserModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],

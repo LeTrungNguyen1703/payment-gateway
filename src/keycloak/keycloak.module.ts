@@ -41,10 +41,6 @@ import { KeycloakAdminService } from './keycloak-admin.service';
     },
     {
       provide: APP_GUARD,
-      useClass: ResourceGuard,
-    },
-    {
-      provide: APP_GUARD,
       useClass: RoleGuard,
     },
   ],

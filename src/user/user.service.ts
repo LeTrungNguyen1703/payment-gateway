@@ -1,8 +1,17 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  Logger,
+} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { QueryUserDto } from './dto/query-user.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { KeycloakAdminService } from '../keycloak/keycloak-admin.service';
+import { UserResponse } from './interfaces/user.interface';
+import { PrismaPagination } from '../common/helpers/prisma-pagination.helper';
+import { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
 
 @Injectable()
 export class UserService {
@@ -13,7 +22,7 @@ export class UserService {
     private readonly keycloakAdmin: KeycloakAdminService,
   ) {}
 
-  async create(createUserDto: CreateUserDto) {
+  async create(createUserDto: CreateUserDto): Promise<UserResponse> {
     // Check if user with same email already exists in database
     const existingUser = await this.prisma.users.findFirst({
       where: {
@@ -44,34 +53,26 @@ export class UserService {
       });
 
       // 2. Create user in database with keycloak_id
-      this.logger.log(`Creating user in database with Keycloak ID: ${keycloakUser.id}`);
+      this.logger.log(
+        `Creating user in database with Keycloak ID: ${keycloakUser.id}`,
+      );
       const dbUser = await this.prisma.users.create({
         data: {
           keycloak_id: keycloakUser.id,
           email: createUserDto.email,
-          full_name: full_name,
-          phone: createUserDto.phone,
-          metadata: createUserDto.metadata,
+          full_name: full_name ?? null,
+          phone: userData.phone ?? null,
+          metadata: userData.metadata ?? null,
         },
       });
 
       this.logger.log(`User created successfully: ${dbUser.id}`);
 
-      // Return user without sensitive data
-      return {
-        id: dbUser.id,
-        keycloak_id: dbUser.keycloak_id,
-        email: dbUser.email,
-        full_name: dbUser.full_name,
-        phone: dbUser.phone,
-        status: dbUser.status,
-        created_at: dbUser.created_at,
-      };
-    } catch (error) {
+      return dbUser;
+    } catch (error: any) {
       this.logger.error('Failed to create user', error);
 
       // If database creation failed but Keycloak user was created, we should rollback
-      // In production, consider implementing a more robust transaction/saga pattern
       if (error.keycloakUser?.id) {
         try {
           await this.keycloakAdmin.deleteUser(error.keycloakUser.id);
@@ -85,25 +86,37 @@ export class UserService {
     }
   }
 
-  async findAll() {
-    return this.prisma.users.findMany({
-      select: {
-        id: true,
-        keycloak_id: true,
-        email: true,
-        full_name: true,
-        phone: true,
-        status: true,
-        kyc_verified: true,
-        kyc_level: true,
-        created_at: true,
-        updated_at: true,
-        last_login_at: true,
-      },
-    });
+  async findAll(queryDto?: QueryUserDto): Promise<PaginatedResponse<UserResponse>> {
+    const { page = 1, limit = 10, status, kyc_verified, search } = queryDto || {};
+
+    // Build where clause
+    const where: any = {};
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (kyc_verified !== undefined) {
+      where.kyc_verified = kyc_verified === true || kyc_verified === 'true' as any;
+    }
+
+    if (search) {
+      where.OR = [
+        { email: { contains: search, mode: 'insensitive' } },
+        { full_name: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    return PrismaPagination.paginate<UserResponse>(
+      this.prisma.users,
+      page,
+      limit,
+      where,
+      { created_at: 'desc' },
+    );
   }
 
-  async findOne(id: string) {
+  async findOne(id: string): Promise<UserResponse> {
     const user = await this.prisma.users.findUnique({
       where: { id },
       include: {
@@ -119,19 +132,21 @@ export class UserService {
     return user;
   }
 
-  async findByKeycloakId(keycloakId: string) {
+  async findByKeycloakId(keycloakId: string): Promise<UserResponse> {
     const user = await this.prisma.users.findUnique({
       where: { keycloak_id: keycloakId },
     });
 
     if (!user) {
-      throw new NotFoundException(`User with Keycloak ID ${keycloakId} not found`);
+      throw new NotFoundException(
+        `User with Keycloak ID ${keycloakId} not found`,
+      );
     }
 
     return user;
   }
 
-  async findByEmail(email: string) {
+  async findByEmail(email: string): Promise<UserResponse> {
     const user = await this.prisma.users.findUnique({
       where: { email },
     });
@@ -143,22 +158,35 @@ export class UserService {
     return user;
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto) {
-    const user = await this.findOne(id); // Check if user exists
+  async update(id: string, updateUserDto: UpdateUserDto): Promise<UserResponse> {
+    const user = await this.findOne(id);
 
     try {
+      // Extract special fields and spread the rest
+      const { password, full_name, ...otherUpdates } = updateUserDto;
+
+      const dataToUpdate: any = {
+        ...otherUpdates,
+        updated_at: new Date(),
+      };
+
+      if (full_name !== undefined) {
+        dataToUpdate.full_name = full_name;
+      }
+
       // Update user in database
       const updatedUser = await this.prisma.users.update({
         where: { id },
-        data: {
-          ...updateUserDto,
-          updated_at: new Date(),
-        },
+        data: dataToUpdate,
       });
 
-      // Update user in Keycloak if name changed
-      if (updateUserDto.full_name || updateUserDto.email) {
-        const [firstName, ...lastNameParts] = (updateUserDto.full_name || user.full_name || '').split(' ');
+      // Update user in Keycloak if name or email changed
+      if (full_name !== undefined || updateUserDto.email) {
+        const [firstName, ...lastNameParts] = (
+          full_name ||
+          user.full_name ||
+          ''
+        ).split(' ');
         const lastName = lastNameParts.join(' ');
 
         await this.keycloakAdmin.updateUser(user.keycloak_id, {
@@ -170,6 +198,12 @@ export class UserService {
         this.logger.log(`Updated user in Keycloak: ${user.keycloak_id}`);
       }
 
+      // Update password in Keycloak if provided (using separate method)
+      if (password) {
+        await this.keycloakAdmin.resetPassword(user.keycloak_id, password);
+        this.logger.log(`Password updated for user: ${user.keycloak_id}`);
+      }
+
       return updatedUser;
     } catch (error) {
       this.logger.error('Failed to update user', error);
@@ -177,7 +211,7 @@ export class UserService {
     }
   }
 
-  async updateLastLogin(id: string) {
+  async updateLastLogin(id: string): Promise<UserResponse> {
     return this.prisma.users.update({
       where: { id },
       data: {
@@ -186,13 +220,19 @@ export class UserService {
     });
   }
 
-  async remove(id: string) {
-    const user = await this.findOne(id); // Check if user exists
+  async remove(id: string): Promise<{ message: string; user: Partial<UserResponse> }> {
+    const user = await this.findOne(id);
 
     try {
       // Delete from database first
-      await this.prisma.users.delete({
+      const deletedUser = await this.prisma.users.delete({
         where: { id },
+        select: {
+          id: true,
+          email: true,
+          full_name: true,
+          keycloak_id: true,
+        },
       });
 
       // Delete from Keycloak
@@ -200,7 +240,10 @@ export class UserService {
 
       this.logger.log(`User deleted: ${id}, Keycloak ID: ${user.keycloak_id}`);
 
-      return { message: 'User deleted successfully', id };
+      return {
+        message: `User ${deletedUser.email} has been deleted successfully`,
+        user: deletedUser,
+      };
     } catch (error) {
       this.logger.error('Failed to delete user', error);
       throw error;

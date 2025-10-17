@@ -1,6 +1,6 @@
 export default () => ({
   keycloak: {
-    baseUrl: process.env.KEYCLOAK_URL,
+    baseUrl: process.env.KEYCLOAK_AUTH_SERVER_URL,
     realmName: process.env.KEYCLOAK_REALM,
     clientId: process.env.KEYCLOAK_CLIENT_ID,
     clientSecret: process.env.KEYCLOAK_CLIENT_SECRET,
