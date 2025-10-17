@@ -24,7 +24,7 @@ import { KeycloakAdminService } from './keycloak-admin.service';
             '22zIfvPGn83xbYguOdUpMCicw9To6qKh',
           // Optional: Uncomment these for production settings
           // cookieKey: 'KEYCLOAK_JWT',
-          // logLevels: ['verbose'],
+          logLevels: ['verbose'],
         };
       },
       inject: [ConfigService],

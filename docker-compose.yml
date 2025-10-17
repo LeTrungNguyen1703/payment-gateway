@@ -34,6 +34,25 @@ services:
       timeout: 5s
       retries: 12
 
+  # ✅ PostgreSQL service (added)
+  postgres:
+    image: postgres:15-alpine
+    container_name: payment-gateway-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: '170301nN$'
+      POSTGRES_DB: payment_gateway
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d payment_gateway || exit 1" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   # ✅ NestJS app service
   app:
     build: .
@@ -46,14 +65,23 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
       # 👇 Thêm biến này để app trỏ đúng Redis trong cùng network
       REDIS_HOST: redis
       REDIS_PORT: 6379
       # 👇 Biến để app trỏ tới Keycloak trong cùng network
       KEYCLOAK_BASE_URL: http://keycloak:8080
+      # 👇 Postgres connection info
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: '170301nN$'
+      POSTGRES_DB: payment_gateway
     command: [ "/app/docker-entrypoint.sh" ]
 
 volumes:
   redis_data:
   keycloak_data:
+  postgres_data:

@@ -1,26 +1,23 @@
 import {
-  Controller,
-  Get,
-  Post,
   Body,
-  Patch,
-  Param,
+  Controller,
   Delete,
-  UseGuards,
-  Request,
+  Get,
+  Param,
+  Patch,
+  Post,
 } from '@nestjs/common';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import {
-  AuthGuard,
-  ResourceGuard,
-  Roles,
-  Scopes,
   Public,
   Resource,
+  RoleMatchingMode,
+  Roles,
+  Scopes,
 } from 'nest-keycloak-connect';
-import { ApiBearerAuth, ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUserId } from './decorators/current-user.decorator';
 
 @ApiTags('users')
@@ -54,7 +51,9 @@ export class UserController {
   }
 
   @Get(':id')
-  @Scopes('user:read')
+  // @Scopes('user:read')
+  @ApiBearerAuth('access-token')
+  @Roles({ roles: ['realm:user'], mode: RoleMatchingMode.ANY })
   @ApiOperation({ summary: 'Get user by ID' })
   findOne(@Param('id') id: string) {
     return this.userService.findOne(id);

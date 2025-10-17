@@ -44,7 +44,7 @@ export class AppController {
   }
 
   // Protected route with role - chỉ admin mới truy cập được
-  @Roles({ roles: ['admin'] })
+  @Roles({ roles: ['admin'], mode: RoleMatchingMode.ANY })
   @Get('admin')
   getAdmin(@AuthenticatedUser() user: any) {
     return {

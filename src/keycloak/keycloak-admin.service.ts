@@ -97,25 +97,7 @@ export class KeycloakAdminService implements OnModuleInit {
         this.logger.log(`Password set for user: ${createdUser.id}`);
       }
 
-      // Assign default 'user' role
-      const roles = await this.kcAdminClient.roles.find({
-        realm: this.configService.get<string>(KEYCLOAK_CONFIG_KEY.REALM_NAME),
-      });
-      const userRole = roles.find((role) => role.name === 'user');
-
-      if (userRole?.id && userRole?.name) {
-        await this.kcAdminClient.users.addRealmRoleMappings({
-          realm: this.configService.get<string>(KEYCLOAK_CONFIG_KEY.REALM_NAME),
-          id: createdUser.id,
-          roles: [
-            {
-              id: userRole.id,
-              name: userRole.name,
-            },
-          ],
-        });
-        this.logger.log(`Role 'user' assigned to user: ${createdUser.id}`);
-      }
+      // // Assign default 'user' role will be auto-assigned based on Keycloak settings
 
       return createdUser;
     } catch (error) {

@@ -41,7 +41,7 @@ async function bootstrap() {
   });
 
   // Start listening after all setup (including Swagger) is done
-  await app.listen(process.env.PORT ?? 3001);
+  await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }
 
 bootstrap();
