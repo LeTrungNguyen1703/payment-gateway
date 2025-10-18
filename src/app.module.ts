@@ -9,6 +9,7 @@ import { KeycloakModule } from './keycloak/keycloak.module';
 import { RedisCacheModule } from './cache/redis-cache.module';
 import { UserModule } from './user/user.module';
 import { AuthModule } from './auth/auth.module';
+import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 import keycloakConfiguation from './keycloak/config/keycloak.configuation';
 
 @Module({
@@ -25,6 +26,7 @@ import keycloakConfiguation from './keycloak/config/keycloak.configuation';
     RedisCacheModule,
     UserModule,
     AuthModule,
+    PaymentMethodsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

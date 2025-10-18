@@ -2,6 +2,8 @@
 
 ## Core Requirements Summary
 
+## This document defines the rules Copilot should follow when generating CRUD modules for the Payment Gateway project
+
 ### 1. **Authentication & Security**
 - ✅ All endpoints must be protected with Keycloak guards (`@Roles`, `@Resource`)
 - ✅ **NEVER take userId from URL parameter** - always extract from JWT token: `@CurrentUserId() keycloakId: string`
@@ -362,57 +364,626 @@ async findAllSimple(queryDto: QueryEntityDto): Promise<PaginatedResponse<EntityR
 - ✅ Document pagination in Swagger with example responses
 - ✅ Return `PaginatedResponse<T>` type for type safety
 
-## File Structure
+### 12. **Testing Requirements** ⭐
+
+For each CRUD endpoint, you must create **two types of tests**:
+1. **Unit Tests** - Test service logic in isolation with mocked dependencies
+2. **Integration Tests** - Test complete HTTP request/response cycle with real database
+
+#### Unit Tests (*.service.spec.ts)
+- ✅ **REQUIRED** for every service method
+- ✅ Test all success scenarios
+- ✅ Test all error scenarios (validation, not found, forbidden, conflict)
+- ✅ Mock all dependencies (PrismaService, external services)
+- ✅ Test pagination logic with different parameters
+- ✅ Test ownership validation
+- ✅ Test Prisma error handling (P2002, P2003, P2025)
+- ✅ Minimum 80% code coverage
+
+**Unit Test Pattern:**
+```typescript
+// entity.service.spec.ts
+import { Test, TestingModule } from '@nestjs/testing';
+import { EntityService } from './entity.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { NotFoundException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+
+describe('EntityService', () => {
+  let service: EntityService;
+  let prisma: PrismaService;
+
+  const prismaMock = {
+    entities: {
+      create: jest.fn(),
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      count: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
+    users: {
+      findUnique: jest.fn(),
+    },
+  };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        EntityService,
+        { provide: PrismaService, useValue: prismaMock },
+      ],
+    }).compile();
+
+    service = module.get<EntityService>(EntityService);
+    prisma = module.get<PrismaService>(PrismaService);
+
+    jest.clearAllMocks();
+  });
+
+  describe('create', () => {
+    it('should create an entity successfully', async () => {
+      const userId = 'user-uuid-123';
+      const createDto = { name: 'Test', description: 'Test desc' };
+      const expected = { id: 'entity-uuid', user_id: userId, ...createDto };
+
+      prismaMock.entities.create.mockResolvedValue(expected);
+
+      const result = await service.create(createDto, userId);
+
+      expect(result).toEqual(expected);
+      expect(prismaMock.entities.create).toHaveBeenCalledWith({
+        data: { user_id: userId, ...createDto },
+      });
+    });
+
+    it('should throw ConflictException on duplicate', async () => {
+      const userId = 'user-uuid-123';
+      const createDto = { name: 'Test' };
+      
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        { code: 'P2002', clientVersion: '5.0.0', meta: { target: ['name'] } }
+      );
+
+      prismaMock.entities.create.mockRejectedValue(prismaError);
+
+      await expect(service.create(createDto, userId)).rejects.toThrow(ConflictException);
+    });
+
+    it('should throw NotFoundException if user not found', async () => {
+      const userId = 'user-uuid-123';
+      const createDto = { name: 'Test' };
+      
+      const prismaError = new Prisma.PrismaClientKnownRequestError(
+        'Foreign key constraint failed',
+        { code: 'P2003', clientVersion: '5.0.0' }
+      );
+
+      prismaMock.entities.create.mockRejectedValue(prismaError);
+
+      await expect(service.create(createDto, userId)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findAll', () => {
+    it('should return paginated entities', async () => {
+      const queryDto = { page: 1, limit: 10 };
+      const mockData = [{ id: 'uuid-1', name: 'Entity 1' }];
+
+      prismaMock.entities.findMany.mockResolvedValue(mockData);
+      prismaMock.entities.count.mockResolvedValue(1);
+
+      const result = await service.findAll(queryDto);
+
+      expect(result.data).toEqual(mockData);
+      expect(result.meta.total).toBe(1);
+      expect(result.meta.page).toBe(1);
+    });
+
+    it('should filter by status', async () => {
+      const queryDto = { page: 1, limit: 10, status: 'active' };
+      
+      prismaMock.entities.findMany.mockResolvedValue([]);
+      prismaMock.entities.count.mockResolvedValue(0);
+
+      await service.findAll(queryDto);
+
+      expect(prismaMock.entities.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ status: 'active' }),
+        })
+      );
+    });
+  });
+
+  describe('findOne', () => {
+    it('should return an entity by id', async () => {
+      const id = 'entity-uuid';
+      const expected = { id, name: 'Test Entity' };
+
+      prismaMock.entities.findUnique.mockResolvedValue(expected);
+
+      const result = await service.findOne(id);
+
+      expect(result).toEqual(expected);
+    });
+
+    it('should throw NotFoundException if entity not found', async () => {
+      prismaMock.entities.findUnique.mockResolvedValue(null);
+
+      await expect(service.findOne('non-existent')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('updateForUser', () => {
+    it('should update entity owned by user', async () => {
+      const userId = 'user-uuid';
+      const entityId = 'entity-uuid';
+      const updateDto = { name: 'Updated' };
+      const existing = { id: entityId, user_id: userId };
+      const updated = { ...existing, ...updateDto };
+
+      prismaMock.entities.findUnique.mockResolvedValue(existing);
+      prismaMock.entities.update.mockResolvedValue(updated);
+
+      const result = await service.updateForUser(entityId, updateDto, userId);
+
+      expect(result).toEqual(updated);
+    });
+
+    it('should throw ForbiddenException if user does not own entity', async () => {
+      const userId = 'user-uuid';
+      const otherUserId = 'other-user-uuid';
+      const entityId = 'entity-uuid';
+
+      prismaMock.entities.findUnique.mockResolvedValue({
+        id: entityId,
+        user_id: otherUserId,
+      });
+
+      await expect(
+        service.updateForUser(entityId, {}, userId)
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw NotFoundException if entity not found', async () => {
+      prismaMock.entities.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.updateForUser('non-existent', {}, 'user-uuid')
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('removeForUser', () => {
+    it('should delete entity owned by user', async () => {
+      const userId = 'user-uuid';
+      const entityId = 'entity-uuid';
+      const existing = { id: entityId, user_id: userId, name: 'Test' };
+
+      prismaMock.entities.findUnique.mockResolvedValue(existing);
+      prismaMock.entities.delete.mockResolvedValue(existing);
+
+      const result = await service.removeForUser(entityId, userId);
+
+      expect(result.message).toBe('Entity has been deleted successfully');
+      expect(prismaMock.entities.delete).toHaveBeenCalledWith({
+        where: { id: entityId },
+      });
+    });
+
+    it('should throw ForbiddenException if user does not own entity', async () => {
+      prismaMock.entities.findUnique.mockResolvedValue({
+        id: 'entity-uuid',
+        user_id: 'other-user-uuid',
+      });
+
+      await expect(
+        service.removeForUser('entity-uuid', 'user-uuid')
+      ).rejects.toThrow(ForbiddenException);
+    });
+  });
+
+  describe('buildWhere helper', () => {
+    it('should build where clause with all filters', async () => {
+      const queryDto = {
+        page: 1,
+        limit: 10,
+        status: 'active',
+        search: 'test',
+      };
+
+      prismaMock.entities.findMany.mockResolvedValue([]);
+      prismaMock.entities.count.mockResolvedValue(0);
+
+      await service.findAll(queryDto);
+
+      expect(prismaMock.entities.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: 'active',
+            OR: expect.any(Array),
+          }),
+        })
+      );
+    });
+  });
+});
 ```
-src/
-  [entity-name]/
-    [entity-name].controller.ts
-    [entity-name].service.ts
-    [entity-name].module.ts
-    dto/
-      create-[entity-name].dto.ts
-      update-[entity-name].dto.ts
-      query-[entity-name].dto.ts  // For pagination & filtering
-    interfaces/
-      [entity-name].interface.ts  // Contains both Interface and Response class
-  common/
-    dto/
-      pagination.dto.ts  // Base pagination DTO
-    helpers/
-      prisma-pagination.helper.ts  // Reusable pagination helper
-    interfaces/
-      paginated-response.interface.ts  // Generic paginated response
+
+#### Integration Tests (*.integration-spec.ts)
+- ✅ **REQUIRED** for all controller endpoints
+- ✅ Test complete request/response cycle
+- ✅ Test authentication (with/without valid tokens)
+- ✅ Test authorization (admin vs user roles)
+- ✅ Test actual database operations (use test database)
+- ✅ Test pagination with real data
+- ✅ Test edge cases and boundary conditions
+- ✅ Clean up test data after each test
+
+**Integration Test Pattern:**
+```typescript
+// entity.integration-spec.ts (in test/ folder)
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import request from 'supertest';
+import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/prisma/prisma.service';
+
+describe('Entity Integration Tests', () => {
+  let app: INestApplication;
+  let prisma: PrismaService;
+  let accessToken: string;
+  let userId: string;
+  let entityId: string;
+
+  beforeAll(async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    
+    await app.init();
+
+    prisma = app.get<PrismaService>(PrismaService);
+
+    // Login and get access token
+    const loginResponse = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: 'test@example.com', password: 'Test123!' })
+      .expect(200);
+
+    accessToken = loginResponse.body.access_token;
+
+    // Get user ID from token or database
+    const user = await prisma.users.findUnique({
+      where: { email: 'test@example.com' },
+    });
+    
+    if (!user) {
+      throw new Error('Test user not found. Please seed test database.');
+    }
+    
+    userId = user.id;
+  });
+
+  afterAll(async () => {
+    // Clean up test data
+    await prisma.entities.deleteMany({
+      where: { user_id: userId },
+    });
+    await app.close();
+  });
+
+  afterEach(async () => {
+    // Clean up after each test if needed
+  });
+
+  describe('POST /entities', () => {
+    it('should create a new entity', async () => {
+      const createDto = {
+        name: 'Test Entity',
+        description: 'Test description',
+        status: 'active',
+      };
+
+      const response = await request(app.getHttpServer())
+        .post('/entities')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(createDto)
+        .expect(201);
+
+      expect(response.body).toMatchObject({
+        id: expect.any(String),
+        name: createDto.name,
+        description: createDto.description,
+        user_id: userId,
+      });
+
+      entityId = response.body.id;
+    });
+
+    it('should fail without authentication', async () => {
+      await request(app.getHttpServer())
+        .post('/entities')
+        .send({ name: 'Test' })
+        .expect(401);
+    });
+
+    it('should fail with invalid data', async () => {
+      await request(app.getHttpServer())
+        .post('/entities')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ name: '' }) // Invalid
+        .expect(400);
+    });
+
+    it('should fail with duplicate unique field', async () => {
+      const createDto = { name: 'Unique Name' };
+
+      // First creation
+      await request(app.getHttpServer())
+        .post('/entities')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(createDto)
+        .expect(201);
+
+      // Duplicate creation
+      await request(app.getHttpServer())
+        .post('/entities')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(createDto)
+        .expect(409);
+    });
+  });
+
+  describe('GET /entities', () => {
+    it('should get all entities with pagination (admin)', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/entities?page=1&limit=10')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        data: expect.any(Array),
+        meta: {
+          total: expect.any(Number),
+          page: 1,
+          limit: 10,
+          totalPages: expect.any(Number),
+          hasNextPage: expect.any(Boolean),
+          hasPreviousPage: false,
+        },
+      });
+    });
+
+    it('should filter by status', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/entities?status=active')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(response.body.data.every(e => e.status === 'active')).toBe(true);
+    });
+
+    it('should search entities', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/entities?search=Test')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(response.body.data).toBeDefined();
+    });
+  });
+
+  describe('GET /entities/my-entities', () => {
+    it('should get current user entities only', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/entities/my-entities')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(response.body.data.every(e => e.user_id === userId)).toBe(true);
+    });
+  });
+
+  describe('GET /entities/:id', () => {
+    it('should get entity by id', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/entities/${entityId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        id: entityId,
+        name: expect.any(String),
+      });
+    });
+
+    it('should return 404 for non-existent entity', async () => {
+      await request(app.getHttpServer())
+        .get('/entities/00000000-0000-0000-0000-000000000000')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    });
+
+    it('should fail with invalid UUID', async () => {
+      await request(app.getHttpServer())
+        .get('/entities/invalid-uuid')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(400);
+    });
+  });
+
+  describe('PATCH /entities/:id', () => {
+    it('should update entity owned by user', async () => {
+      const updateDto = { name: 'Updated Name' };
+
+      const response = await request(app.getHttpServer())
+        .patch(`/entities/${entityId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(updateDto)
+        .expect(200);
+
+      expect(response.body.name).toBe(updateDto.name);
+    });
+
+    it('should fail to update entity owned by another user', async () => {
+      // Create entity as different user (if you have multiple test users)
+      // Then try to update it
+      // expect(403)
+    });
+
+    it('should fail with invalid data', async () => {
+      await request(app.getHttpServer())
+        .patch(`/entities/${entityId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ name: '' })
+        .expect(400);
+    });
+  });
+
+  describe('DELETE /entities/:id', () => {
+    it('should delete entity owned by user', async () => {
+      const response = await request(app.getHttpServer())
+        .delete(`/entities/${entityId}`)
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+
+      expect(response.body.message).toBeDefined();
+
+      // Verify deletion
+      const deleted = await prisma.entities.findUnique({
+        where: { id: entityId },
+      });
+      expect(deleted).toBeNull();
+    });
+
+    it('should return 404 when deleting non-existent entity', async () => {
+      await request(app.getHttpServer())
+        .delete('/entities/00000000-0000-0000-0000-000000000000')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(404);
+    });
+
+    it('should fail to delete entity owned by another user', async () => {
+      // Create entity as different user, try to delete
+      // expect(403)
+    });
+  });
+});
 ```
 
-## Example: User Module (Reference Implementation)
+#### Controller Tests (*.controller.spec.ts)
+- ✅ Optional but recommended for complex controllers
+- ✅ Test request validation
+- ✅ Test decorator functionality
+- ✅ Mock service layer
 
-See `src/user/` for complete reference implementation following these guidelines:
-- **user.service.ts**: Clean service with no verbose selects, proper error handling
-- **user.controller.ts**: Full Swagger documentation, proper decorators
-- **interfaces/user.interface.ts**: Response class with all fields properly typed
-- **dto/**: Proper validation and Swagger decorators
+**Controller Test Pattern:**
+```typescript
+// entity.controller.spec.ts
+import { Test, TestingModule } from '@nestjs/testing';
+import { EntityController } from './entity.controller';
+import { EntityService } from './entity.service';
 
-## Common Mistakes to Avoid
+describe('EntityController', () => {
+  let controller: EntityController;
+  let service: EntityService;
 
-1. ❌ Using interface instead of class for Response types
-2. ❌ Taking userId from URL params or request body
-3. ❌ Not resolving internal user_id from keycloak_id
-4. ❌ Using `?:` optional instead of `| null` for nullable fields
-5. ❌ Forgetting @ApiBearerAuth decorator
-6. ❌ Verbose select statements listing all fields
-7. ❌ Using ParseIntPipe for UUIDs (use ParseUUIDPipe)
-8. ❌ Not handling Keycloak sync for user operations
+  const mockService = {
+    create: jest.fn(),
+    findAll: jest.fn(),
+    findOne: jest.fn(),
+    findByUserId: jest.fn(),
+    updateForUser: jest.fn(),
+    removeForUser: jest.fn(),
+  };
 
-## Validation Checklist
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [EntityController],
+      providers: [
+        { provide: EntityService, useValue: mockService },
+      ],
+    }).compile();
 
-- [ ] Response class (not interface) with @Expose() and @ApiProperty()
-- [ ] All endpoints use Keycloak guards (@Roles, @Resource)
-- [ ] keycloakId extracted from @CurrentUserId() decorator
-- [ ] User_id resolved from keycloak_id in database
-- [ ] Full Swagger documentation
-- [ ] Proper error handling (404, 400, 409)
-- [ ] Service exported from module
-- [ ] No verbose select statements (unless necessary)
-- [ ] UUID validation with ParseUUIDPipe
-- [ ] Keycloak sync for user-related operations
+    controller = module.get<EntityController>(EntityController);
+    service = module.get<EntityService>(EntityService);
 
+    jest.clearAllMocks();
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+
+  describe('create', () => {
+    it('should call service.create with correct parameters', async () => {
+      const createDto = { name: 'Test' };
+      const userId = 'user-uuid';
+      const expected = { id: 'entity-uuid', ...createDto };
+
+      mockService.create.mockResolvedValue(expected);
+
+      const result = await controller.create(createDto, userId);
+
+      expect(service.create).toHaveBeenCalledWith(createDto, userId);
+      expect(result).toEqual(expected);
+    });
+  });
+
+  // Add similar tests for other methods
+});
+```
+
+#### Test Coverage Requirements
+- ✅ **Minimum 80%** overall code coverage
+- ✅ **100%** coverage for critical business logic
+- ✅ **100%** coverage for security-related code (auth, ownership checks)
+
+#### Running Tests
+```bash
+# Unit tests
+npm test
+
+# Unit tests with coverage
+npm run test:cov
+
+# Integration tests
+npm run test:e2e
+
+# Watch mode for development
+npm run test:watch
+
+# Specific test file
+npm test -- entity.service.spec.ts
+npm run test:e2e -- --testNamePattern="Entity Integration"
+```
+
+#### Test Environment Setup
+```typescript
+// test/setup.ts
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_TEST_URL,
+    },
+  },
+});
+
+beforeAll(async () => {
+  // Run migrations on test database
+  // Create test users, seed data
+});
+
+afterAll(async () => {
+  // Clean up test database
+  await prisma.$disconnect();
+});
+```
