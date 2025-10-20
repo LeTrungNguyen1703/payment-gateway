@@ -86,8 +86,16 @@ export class UserService {
     }
   }
 
-  async findAll(queryDto?: QueryUserDto): Promise<PaginatedResponse<UserResponse>> {
-    const { page = 1, limit = 10, status, kyc_verified, search } = queryDto || {};
+  async findAll(
+    queryDto?: QueryUserDto,
+  ): Promise<PaginatedResponse<UserResponse>> {
+    const {
+      page = 1,
+      limit = 10,
+      status,
+      kyc_verified,
+      search,
+    } = queryDto || {};
 
     // Build where clause
     const where: any = {};
@@ -97,7 +105,8 @@ export class UserService {
     }
 
     if (kyc_verified !== undefined) {
-      where.kyc_verified = kyc_verified === true || kyc_verified === 'true' as any;
+      where.kyc_verified =
+        kyc_verified === true || kyc_verified === ('true' as any);
     }
 
     if (search) {
@@ -158,7 +167,10 @@ export class UserService {
     return user;
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto): Promise<UserResponse> {
+  async update(
+    id: string,
+    updateUserDto: UpdateUserDto,
+  ): Promise<UserResponse> {
     const user = await this.findOne(id);
 
     try {
@@ -220,7 +232,9 @@ export class UserService {
     });
   }
 
-  async remove(id: string): Promise<{ message: string; user: Partial<UserResponse> }> {
+  async remove(
+    id: string,
+  ): Promise<{ message: string; user: Partial<UserResponse> }> {
     const user = await this.findOne(id);
 
     try {

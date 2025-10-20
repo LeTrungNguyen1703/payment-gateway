@@ -10,7 +10,9 @@ import { RedisCacheModule } from './cache/redis-cache.module';
 import { UserModule } from './user/user.module';
 import { AuthModule } from './auth/auth.module';
 import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
+import { PayosModule } from './payos/payos.module';
 import keycloakConfiguation from './keycloak/config/keycloak.configuation';
+import payosConfiguation from './payos/payos.configuation';
 
 @Module({
   imports: [
@@ -21,12 +23,13 @@ import keycloakConfiguation from './keycloak/config/keycloak.configuation';
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
-      load: [keycloakConfiguation],
+      load: [keycloakConfiguation, payosConfiguation],
     }),
     RedisCacheModule,
     UserModule,
     AuthModule,
     PaymentMethodsModule,
+    PayosModule,
   ],
   controllers: [AppController],
   providers: [AppService],

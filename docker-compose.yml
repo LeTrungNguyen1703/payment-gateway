@@ -29,7 +29,7 @@ services:
       - keycloak_data:/opt/keycloak/data
     healthcheck:
       # uses curl to probe HTTP; image includes curl in most recent Keycloak releases
-      test: [ "CMD-SHELL", "curl -f http://localhost:8080/ || exit 1" ]
+      test: [ "CMD-SHELL", "curl -f http://localhost:8180/ || exit 1" ]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -59,7 +59,7 @@ services:
     container_name: payment-gateway-app
     restart: always
     ports:
-      - '3000:3000'
+      - '3001:3000'
     env_file:
       - .env
     depends_on:

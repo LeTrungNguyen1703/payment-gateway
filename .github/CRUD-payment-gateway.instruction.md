@@ -940,6 +940,91 @@ describe('EntityController', () => {
 });
 ```
 
+### 🧪 Unit & Integration Test Guidelines for CRUD Modules
+
+1️⃣ General Requirements
+
+Each CRUD module (e.g., payment-methods, transactions, users, etc.) must include both unit tests and integration (E2E) tests. However, the depth of testing depends on the complexity of the logic:
+
+| Type of Test              | When to Write                                                                 | Purpose                                                        |
+|---------------------------|----------------------------------------------------------------------------|----------------------------------------------------------------|
+| Unit Test                 | When the CRUD contains custom business logic, validation, or error handling | Ensures each method behaves correctly and throws expected exceptions |
+| Integration / E2E Test    | For full end-to-end flow (Controller → Service → Database)                | Ensures API routes and database interactions work correctly together |
+
+2️⃣ Unit Test Rules
+
+✅ Must write unit tests for methods that:
+
+- Validate input or perform conditional checks (e.g., check if user exists)
+- Throw specific exceptions (ConflictException, NotFoundException, etc.)
+- Transform or sanitize data before saving
+
+🚫 Optional for simple CRUD:
+If a method only wraps PrismaService (e.g., findAll, delete without any logic), you can skip unit test and rely on integration test.
+
+Example:
+
+describe('create', () => {
+  it('should create a payment method', async () => {
+    prismaMock.payment_methods.create.mockResolvedValue(expectedResult);
+    const result = await service.create(createDto, userId);
+
+    expect(result).toEqual(expectedResult);
+    expect(prismaMock.payment_methods.create).toHaveBeenCalledWith({
+      data: { user_id: userId, ...createDto },
+    });
+  });
+
+  it('should throw ConflictException if token already exists', async () => {
+    prismaMock.payment_methods.create.mockRejectedValue(prismaErrorP2002);
+    await expect(service.create(createDto, userId)).rejects.toThrow(ConflictException);
+  });
+
+  it('should throw NotFoundException if user not found', async () => {
+    prismaMock.payment_methods.create.mockRejectedValue(prismaErrorP2003);
+    await expect(service.create(createDto, userId)).rejects.toThrow(NotFoundException);
+  });
+});
+
+3️⃣ Integration / E2E Test Rules
+
+- Use supertest with a real NestJS application instance (AppModule).
+- Tests should hit actual API endpoints and interact with a test database (e.g., SQLite or Postgres test schema).
+
+Example:
+
+import * as request from 'supertest';
+
+describe('PaymentMethodsController (E2E)', () => {
+  let app: INestApplication;
+
+  beforeAll(async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleRef.createNestApplication();
+    await app.init();
+  });
+
+  it('/payment-methods (POST)', async () => {
+    return request(app.getHttpServer())
+      .post('/payment-methods')
+      .send({ type: 'CARD', token: 'tok_123' })
+      .expect(201);
+  });
+});
+
+4️⃣ Test Coverage Expectations
+
+✅ Unit tests: Focus on exception handling and logic branches.
+
+✅ Integration/E2E tests: Verify real CRUD behavior through API endpoints.
+
+5️⃣ Final Rule
+
+For each CRUD created, add both unit test and integration (E2E) test folders following the above rules. Use the existing sample unit test as the reference pattern.
+
 #### Test Coverage Requirements
 - ✅ **Minimum 80%** overall code coverage
 - ✅ **100%** coverage for critical business logic

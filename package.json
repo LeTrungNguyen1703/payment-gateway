@@ -30,6 +30,7 @@
     "@nestjs/event-emitter": "^2.0.0",
     "@nestjs/platform-express": "^10.0.0",
     "@nestjs/swagger": "^7.0.0",
+    "@payos/node": "^2.0.3",
     "@prisma/client": "^6.17.1",
     "ably": "^2.14.0",
     "axios": "^1.12.2",

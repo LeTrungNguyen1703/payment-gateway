@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import KcAdminClient from '@keycloak/keycloak-admin-client';
 import { KEYCLOAK_CONFIG_KEY } from './config/keycloak.configuation';
@@ -97,7 +97,7 @@ export class KeycloakAdminService implements OnModuleInit {
         this.logger.log(`Password set for user: ${createdUser.id}`);
       }
 
-      // // Assign default 'user' role will be auto-assigned based on Keycloak settings
+      // Assign default 'user' role will be auto-assigned based on Keycloak settings
 
       return createdUser;
     } catch (error) {
