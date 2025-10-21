@@ -106,3 +106,51 @@ export class PrismaPagination {
   }
 }
 
+/**
+ * Get pagination parameters (skip and take) from page and limit
+ * @param page Current page number (1-indexed)
+ * @param limit Number of items per page
+ * @returns Object with skip and take values for Prisma
+ */
+export function getPaginationParams(page: number = 1, limit: number = 10): { skip: number; take: number } {
+  const safePage = Math.max(1, Math.floor(page || 1));
+  const safeLimit = Math.max(1, Math.min(100, Math.floor(limit || 10)));
+
+  return {
+    skip: (safePage - 1) * safeLimit,
+    take: safeLimit,
+  };
+}
+
+/**
+ * Create paginated response with metadata
+ * @param data Array of data items
+ * @param total Total number of records
+ * @param page Current page number
+ * @param limit Number of items per page
+ * @returns Paginated response object
+ */
+export function createPaginatedResponse<T>(
+  data: T[],
+  total: number,
+  page: number = 1,
+  limit: number = 10,
+): PaginatedResponse<T> {
+  const safePage = Math.max(1, Math.floor(page || 1));
+  const safeLimit = Math.max(1, Math.min(100, Math.floor(limit || 10)));
+  const totalPages = Math.ceil(total / safeLimit);
+
+  const meta: PaginationMeta = {
+    total,
+    page: safePage,
+    limit: safeLimit,
+    totalPages,
+    hasNextPage: safePage < totalPages,
+    hasPreviousPage: safePage > 1,
+  };
+
+  return {
+    data,
+    meta,
+  };
+}
