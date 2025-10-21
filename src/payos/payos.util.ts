@@ -1,13 +1,12 @@
 import { createHmac } from 'node:crypto';
 
 export function sortObjDataByKey(object: Record<string, unknown>) {
-  const orderedObject = Object.keys(object)
+  return Object.keys(object)
     .sort()
     .reduce((obj, key) => {
       obj[key] = object[key];
       return obj;
     }, {});
-  return orderedObject;
 }
 
 export function convertObjToQueryStr(object: Record<string, unknown>) {

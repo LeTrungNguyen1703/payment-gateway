@@ -1,95 +1,138 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { CreateTransactionDto } from './dto/create-transaction.dto';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import {
+  CreateTransactionDto,
+  TransactionStatus,
+} from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { QueryTransactionDto } from './dto/query-transaction.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { PaginatedResponse } from '../common/interfaces/paginated-response.interface';
-import { getPaginationParams, createPaginatedResponse } from '../common/helpers/prisma-pagination.helper';
+import {
+  getPaginationParams,
+  createPaginatedResponse,
+} from '../common/helpers/prisma-pagination.helper';
 import { Prisma } from '@prisma/client';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EVENTS } from '../common/constants/events.constants';
+import { PayosWebhookBodyPayload } from '../payos/dto/payos-webhooks-body.payload';
 
 @Injectable()
 export class TransactionService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly emitter: EventEmitter2,
+  ) {}
 
   async create(createTransactionDto: CreateTransactionDto) {
-    try {
-      // Verify user exists
-      const user = await this.prisma.users.findUnique({
-        where: { id: createTransactionDto.user_id }
-      });
-
-      if (!user) {
-        throw new BadRequestException('User not found');
-      }
-
-      // Verify payment method if provided
-      if (createTransactionDto.payment_method_id) {
-        const paymentMethod = await this.prisma.payment_methods.findUnique({
-          where: { id: createTransactionDto.payment_method_id }
+    // Wrap trong transaction để đảm bảo atomicity
+    return await this.prisma
+      .$transaction(async (tx) => {
+        // Verify user exists
+        const user = await tx.users.findUnique({
+          where: { id: createTransactionDto.user_id },
         });
 
-        if (!paymentMethod) {
-          throw new BadRequestException('Payment method not found');
+        if (!user) {
+          throw new BadRequestException('User not found');
         }
 
-        if (paymentMethod.user_id !== createTransactionDto.user_id) {
-          throw new BadRequestException('Payment method does not belong to this user');
-        }
-      }
+        // Verify payment method if provided
+        if (createTransactionDto.payment_method_id) {
+          const paymentMethod = await tx.payment_methods.findUnique({
+            where: { id: createTransactionDto.payment_method_id },
+          });
 
-      const transaction = await this.prisma.transactions.create({
-        data: {
-          user_id: createTransactionDto.user_id,
-          payment_method_id: createTransactionDto.payment_method_id,
-          amount: createTransactionDto.amount,
-          currency: createTransactionDto.currency || 'VND',
-          description: createTransactionDto.description,
-          status: createTransactionDto.status || 'pending',
-          gateway_provider: createTransactionDto.gateway_provider,
-          gateway_response: createTransactionDto.gateway_response || Prisma.JsonNull,
-          ip_address: createTransactionDto.ip_address,
-          user_agent: createTransactionDto.user_agent,
-          device_id: createTransactionDto.device_id,
-        },
-        include: {
-          users: {
-            select: {
-              id: true,
-              email: true,
-              full_name: true,
-            }
-          },
-          payment_methods: {
-            select: {
-              id: true,
-              type: true,
-              provider: true,
-              last_four: true,
-            }
+          if (!paymentMethod) {
+            throw new BadRequestException('Payment method not found');
+          }
+
+          if (paymentMethod.user_id !== createTransactionDto.user_id) {
+            throw new BadRequestException(
+              'Payment method does not belong to this user',
+            );
           }
         }
-      });
 
-      // Create transaction event
-      await this.prisma.transaction_events.create({
-        data: {
-          transaction_id: transaction.id,
-          event_type: 'created',
-          to_value: transaction.status,
-          metadata: { created_by: 'system' } as any,
+        // Create transaction với status PENDING
+        const transaction = await tx.transactions.create({
+          data: {
+            user_id: createTransactionDto.user_id,
+            payment_method_id: createTransactionDto.payment_method_id,
+            amount: createTransactionDto.amount,
+            currency: createTransactionDto.currency || 'VND',
+            description: createTransactionDto.description,
+            status: TransactionStatus.PENDING, // Trạng thái ban đầu
+            gateway_provider: createTransactionDto.gateway_provider,
+            gateway_response: Prisma.JsonNull,
+            ip_address: createTransactionDto.ip_address,
+            user_agent: createTransactionDto.user_agent,
+            device_id: createTransactionDto.device_id,
+          },
+          include: {
+            users: {
+              select: {
+                id: true,
+                email: true,
+                full_name: true,
+              },
+            },
+            payment_methods: {
+              select: {
+                id: true,
+                type: true,
+                provider: true,
+                last_four: true,
+              },
+            },
+          },
+        });
+
+        // Create initial event
+        await tx.transaction_events.create({
+          data: {
+            transaction_id: transaction.id,
+            event_type: 'CREATED',
+            to_value: TransactionStatus.PENDING,
+            metadata: { created_by: 'system' },
+          },
+        });
+
+        return transaction;
+      })
+      .then(async (transaction) => {
+        // Emit event SAU KHI transaction đã commit
+        // Emit với payload structure rõ ràng
+        this.emitter.emit(EVENTS.TRANSACTION.CREATED, {
+          transactionId: transaction.id,
+          userId: transaction.user_id,
+          amount: transaction.amount,
+          currency: transaction.currency,
+          description: transaction.description,
+          paymentMethodId: transaction.payment_method_id,
+        });
+
+        return {
+          message: 'Transaction created successfully',
+          transaction,
+        };
+      })
+      .catch((error) => {
+        if (error instanceof BadRequestException) {
+          throw error;
         }
+        throw new BadRequestException(
+          `Failed to create transaction: ${error.message}`,
+        );
       });
-
-      return transaction;
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-      throw new BadRequestException(`Failed to create transaction: ${error.message}`);
-    }
   }
 
-  async findAll(queryDto: QueryTransactionDto): Promise<PaginatedResponse<any>> {
+  async findAll(
+    queryDto: QueryTransactionDto,
+  ): Promise<PaginatedResponse<any>> {
     const { skip, take } = getPaginationParams(queryDto.page, queryDto.limit);
 
     // Build where clause
@@ -133,7 +176,7 @@ export class TransactionService {
               id: true,
               email: true,
               full_name: true,
-            }
+            },
           },
           payment_methods: {
             select: {
@@ -141,14 +184,19 @@ export class TransactionService {
               type: true,
               provider: true,
               last_four: true,
-            }
-          }
-        }
+            },
+          },
+        },
       }),
-      this.prisma.transactions.count({ where })
+      this.prisma.transactions.count({ where }),
     ]);
 
-    return createPaginatedResponse(transactions, total, queryDto.page, queryDto.limit);
+    return createPaginatedResponse(
+      transactions,
+      total,
+      queryDto.page,
+      queryDto.limit,
+    );
   }
 
   async findOne(id: string) {
@@ -161,7 +209,7 @@ export class TransactionService {
             email: true,
             full_name: true,
             phone: true,
-          }
+          },
         },
         payment_methods: {
           select: {
@@ -171,7 +219,7 @@ export class TransactionService {
             last_four: true,
             expiry_month: true,
             expiry_year: true,
-          }
+          },
         },
         transaction_events: {
           orderBy: { created_at: 'desc' },
@@ -184,9 +232,9 @@ export class TransactionService {
             status: true,
             reason: true,
             created_at: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     if (!transaction) {
@@ -199,7 +247,7 @@ export class TransactionService {
   async update(id: string, updateTransactionDto: UpdateTransactionDto) {
     // Check if transaction exists
     const existingTransaction = await this.prisma.transactions.findUnique({
-      where: { id }
+      where: { id },
     });
 
     if (!existingTransaction) {
@@ -207,42 +255,16 @@ export class TransactionService {
     }
 
     try {
-      const updateData: any = {};
-
-      // Only update fields that are provided
-      if (updateTransactionDto.amount !== undefined) updateData.amount = updateTransactionDto.amount;
-      if (updateTransactionDto.currency !== undefined) updateData.currency = updateTransactionDto.currency;
-      if (updateTransactionDto.description !== undefined) updateData.description = updateTransactionDto.description;
-      if (updateTransactionDto.status !== undefined) updateData.status = updateTransactionDto.status;
-      if (updateTransactionDto.gateway_provider !== undefined) updateData.gateway_provider = updateTransactionDto.gateway_provider;
-      if (updateTransactionDto.gateway_response !== undefined) updateData.gateway_response = updateTransactionDto.gateway_response;
-      if (updateTransactionDto.external_transaction_id !== undefined) updateData.external_transaction_id = updateTransactionDto.external_transaction_id;
-      if (updateTransactionDto.fraud_score !== undefined) updateData.fraud_score = updateTransactionDto.fraud_score;
-      if (updateTransactionDto.fraud_decision !== undefined) updateData.fraud_decision = updateTransactionDto.fraud_decision;
-      if (updateTransactionDto.fraud_provider !== undefined) updateData.fraud_provider = updateTransactionDto.fraud_provider;
-      if (updateTransactionDto.fraud_metadata !== undefined) updateData.fraud_metadata = updateTransactionDto.fraud_metadata;
-      if (updateTransactionDto.job_id !== undefined) updateData.job_id = updateTransactionDto.job_id;
-      if (updateTransactionDto.ip_address !== undefined) updateData.ip_address = updateTransactionDto.ip_address;
-      if (updateTransactionDto.user_agent !== undefined) updateData.user_agent = updateTransactionDto.user_agent;
-      if (updateTransactionDto.device_id !== undefined) updateData.device_id = updateTransactionDto.device_id;
-
-      updateData.updated_at = new Date();
-
-      // Set completed_at if status is completed
-      if (updateTransactionDto.status === 'completed' && !existingTransaction.completed_at) {
-        updateData.completed_at = new Date();
-      }
-
       const transaction = await this.prisma.transactions.update({
         where: { id },
-        data: updateData,
+        data: updateTransactionDto,
         include: {
           users: {
             select: {
               id: true,
               email: true,
               full_name: true,
-            }
+            },
           },
           payment_methods: {
             select: {
@@ -250,13 +272,16 @@ export class TransactionService {
               type: true,
               provider: true,
               last_four: true,
-            }
-          }
-        }
+            },
+          },
+        },
       });
 
       // Create transaction event if status changed
-      if (updateTransactionDto.status && updateTransactionDto.status !== existingTransaction.status) {
+      if (
+        transaction.status &&
+        transaction.status !== existingTransaction.status
+      ) {
         await this.prisma.transaction_events.create({
           data: {
             transaction_id: id,
@@ -264,14 +289,82 @@ export class TransactionService {
             from_value: existingTransaction.status,
             to_value: updateTransactionDto.status,
             metadata: { updated_by: 'system' } as any,
-          }
+          },
         });
       }
 
       return transaction;
     } catch (error) {
-      throw new BadRequestException(`Failed to update transaction: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to update transaction: ${error.message}`,
+      );
     }
+  }
+
+  async updateGatewayResponse(
+    external_transaction_id: number,
+    gatewayResponse: any,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const transaction = await tx.transactions.findFirst({
+        where: { external_transaction_id: external_transaction_id },
+        select: { id: true, gateway_response: true, status: true },
+      });
+
+      if (!transaction) {
+        throw new NotFoundException('Transaction not found');
+      }
+
+      await tx.transactions.updateMany({
+        where: { external_transaction_id },
+        data: {
+          gateway_response: gatewayResponse,
+          status: TransactionStatus.COMPLETED,
+        },
+      });
+
+      await tx.transaction_events.create({
+        data: {
+          transaction_id: transaction.id,
+          event_type: 'GATEWAY_RESPONSE_UPDATED',
+          from_value: transaction.status,
+          to_value: TransactionStatus.COMPLETED,
+          metadata: { updated_by: 'system' },
+        },
+      });
+    });
+  }
+
+  async updateStatus(transactionId: string, status: string) {
+    const transaction = await this.prisma.transactions.findUnique({
+      where: { id: transactionId },
+      select: { status: true },
+    });
+
+    if (!transaction) {
+      throw new NotFoundException('Transaction not found');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Update transaction
+      const updated = await tx.transactions.update({
+        where: { id: transactionId },
+        data: { status },
+      });
+
+      // Log event
+      await tx.transaction_events.create({
+        data: {
+          transaction_id: transactionId,
+          event_type: 'STATUS_CHANGED',
+          from_value: transaction.status,
+          to_value: status,
+          metadata: { updated_by: 'system' },
+        },
+      });
+
+      return updated;
+    });
   }
 
   async remove(id: string) {
@@ -281,7 +374,7 @@ export class TransactionService {
       include: {
         refunds: true,
         transaction_events: true,
-      }
+      },
     });
 
     if (!transaction) {
@@ -290,38 +383,56 @@ export class TransactionService {
 
     // Don't allow deletion of completed transactions with refunds
     if (transaction.refunds.length > 0) {
-      throw new BadRequestException('Cannot delete transaction with existing refunds');
+      throw new BadRequestException(
+        'Cannot delete transaction with existing refunds',
+      );
     }
 
     try {
       // Delete related records first (transaction_events will be cascade deleted)
       await this.prisma.transactions.delete({
-        where: { id }
+        where: { id },
       });
 
       return { message: 'Transaction deleted successfully', id };
     } catch (error) {
-      throw new BadRequestException(`Failed to delete transaction: ${error.message}`);
+      throw new BadRequestException(
+        `Failed to delete transaction: ${error.message}`,
+      );
     }
   }
 
-  async findByUser(userId: string, queryDto: QueryTransactionDto): Promise<PaginatedResponse<any>> {
+  async findByUser(
+    userId: string,
+    queryDto: QueryTransactionDto,
+  ): Promise<PaginatedResponse<any>> {
     queryDto.user_id = userId;
     return this.findAll(queryDto);
   }
 
   async getTransactionStats(userId?: string) {
-    const where: Prisma.transactionsWhereInput = userId ? { user_id: userId } : {};
+    const where: Prisma.transactionsWhereInput = userId
+      ? { user_id: userId }
+      : {};
 
     const [total, completed, pending, failed, totalAmount] = await Promise.all([
       this.prisma.transactions.count({ where }),
-      this.prisma.transactions.count({ where: { ...where, status: 'completed' } }),
-      this.prisma.transactions.count({ where: { ...where, status: { in: ['pending', 'awaiting_payment', 'processing'] } } }),
-      this.prisma.transactions.count({ where: { ...where, status: { in: ['failed', 'cancelled'] } } }),
+      this.prisma.transactions.count({
+        where: { ...where, status: 'completed' },
+      }),
+      this.prisma.transactions.count({
+        where: {
+          ...where,
+          status: { in: ['pending', 'awaiting_payment', 'processing'] },
+        },
+      }),
+      this.prisma.transactions.count({
+        where: { ...where, status: { in: ['failed', 'cancelled'] } },
+      }),
       this.prisma.transactions.aggregate({
         where: { ...where, status: 'completed' },
-        _sum: { amount: true }
-      })
+        _sum: { amount: true },
+      }),
     ]);
 
     return {

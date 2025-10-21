@@ -12,7 +12,7 @@ export class UpdateTransactionDto extends PartialType(
   })
   @IsOptional()
   @IsString()
-  external_transaction_id?: string;
+  external_transaction_id?: number;
 
   @ApiPropertyOptional({
     description: 'Fraud detection score (0-100)',

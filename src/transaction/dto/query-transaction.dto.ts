@@ -52,5 +52,5 @@ export class QueryTransactionDto extends PaginationDto {
   })
   @IsOptional()
   @IsString()
-  external_transaction_id?: string;
+  external_transaction_id?: number;
 }

@@ -57,7 +57,7 @@ model payment_methods {
 model refunds {
   id                       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   transaction_id           String       @db.Uuid
-  amount                   Decimal      @db.Decimal(15, 2)
+  amount                   Int
   reason                   String?
   status                   String?      @default("pending") @db.VarChar(20)
   external_refund_id       String?      @db.VarChar(255)
@@ -94,7 +94,7 @@ model transactions {
   id                      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id                 String               @db.Uuid
   payment_method_id       String?              @db.Uuid
-  amount                  Decimal              @db.Decimal(15, 2)
+  amount                  Int
   currency                String?              @default("VND") @db.VarChar(3)
   description             String?
   status                  String               @db.VarChar(30)
@@ -103,7 +103,7 @@ model transactions {
   fraud_provider          String?              @db.VarChar(50)
   fraud_checked_at        DateTime?            @db.Timestamp(6)
   fraud_metadata          Json?
-  external_transaction_id String?              @db.VarChar(255)
+  external_transaction_id Int?
   gateway_provider        String?              @db.VarChar(50)
   gateway_response        Json?
   job_id                  String?              @db.VarChar(255)

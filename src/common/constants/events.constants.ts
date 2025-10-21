@@ -1,3 +1,25 @@
-export const EVENTS = {} as const;
+export const EVENTS = {
+  TRANSACTION: {
+    CREATED: 'transaction.created',
+    UPDATED: 'transaction.updated',
+    DELETED: 'transaction.deleted',
+  },
+  PAYMENT: {
+    LINK_CREATED: 'payment.link_created',
+    SUCCESS: 'payment.success',
+    FAILED: 'payment.failed',
+  },
+} as const;
 
-export const SOCKET_EVENTS = {} as const;
+export const SOCKET_EVENTS = {
+  TRANSACTION: {
+    CREATED: 'transaction:created',
+    UPDATED: 'transaction:updated',
+    DELETED: 'transaction:deleted',
+  },
+  PAYMENT: {
+    LINK_CREATED: 'payment:link_created',
+    SUCCESS: 'payment:success',
+    FAILED: 'payment:failed',
+  },
+} as const;
