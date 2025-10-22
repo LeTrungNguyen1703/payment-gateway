@@ -2,7 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TransactionTimeoutProcessor } from './processors/transaction-timeout.processor';
-import { QueueService } from './queue.service';
+import { TransactionTimeoutQueue } from './transaction-timeout-queue.service';
 import { QueueListener } from './listeners/queue.listener';
 import { TransactionModule } from '../transaction/transaction.module';
 import { PayosModule } from '../payos/payos.module';
@@ -26,7 +26,11 @@ import { PayosModule } from '../payos/payos.module';
     forwardRef(() => TransactionModule),
     PayosModule,
   ],
-  providers: [TransactionTimeoutProcessor, QueueService, QueueListener],
-  exports: [QueueService],
+  providers: [
+    TransactionTimeoutProcessor,
+    TransactionTimeoutQueue,
+    QueueListener,
+  ],
+  exports: [TransactionTimeoutQueue],
 })
 export class QueueModule {}

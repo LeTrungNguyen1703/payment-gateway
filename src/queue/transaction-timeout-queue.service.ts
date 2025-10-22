@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { JOB_NAMES, QUEUE_NAMES } from './queue.config';
 
 export interface TransactionTimeoutJobData {
   transactionId: string;
@@ -11,11 +12,11 @@ export interface TransactionTimeoutJobData {
 }
 
 @Injectable()
-export class QueueService {
-  private readonly logger = new Logger(QueueService.name);
+export class TransactionTimeoutQueue {
+  private readonly logger = new Logger(TransactionTimeoutQueue.name);
 
   constructor(
-    @InjectQueue('transaction-timeout')
+    @InjectQueue(QUEUE_NAMES.TRANSACTION.TIMEOUT)
     private readonly transactionTimeoutQueue: Queue,
   ) {}
 
@@ -24,10 +25,9 @@ export class QueueService {
    */
   async scheduleTransactionTimeout(data: TransactionTimeoutJobData) {
     const delay = 60 * 1000; // 15 minutes in milliseconds
-
     try {
       const job = await this.transactionTimeoutQueue.add(
-        'check-and-cancel',
+        JOB_NAMES.TRANSACTION.CHECK_AND_CANCEL,
         data,
         {
           delay,

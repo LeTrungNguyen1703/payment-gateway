@@ -1,12 +1,13 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
-import { TransactionTimeoutJobData } from '../queue.service';
+import { TransactionTimeoutJobData } from '../transaction-timeout-queue.service';
 import { TransactionService } from '../../transaction/transaction.service';
 import { PayosService } from '../../payos/payos.service';
 import { TransactionStatus } from '../../transaction/dto/create-transaction.dto';
+import { QUEUE_NAMES } from '../queue.config';
 
-@Processor('transaction-timeout')
+@Processor(QUEUE_NAMES.TRANSACTION.TIMEOUT)
 export class TransactionTimeoutProcessor extends WorkerHost {
   private readonly logger = new Logger(TransactionTimeoutProcessor.name);
 

@@ -1,13 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { QueueService } from '../queue.service';
+import { TransactionTimeoutQueue } from '../transaction-timeout-queue.service';
 import { EVENTS } from '../../common/constants/events.constants';
 
 @Injectable()
 export class QueueListener {
   private readonly logger = new Logger(QueueListener.name);
 
-  constructor(private readonly queueService: QueueService) {}
+  constructor(private readonly queueService: TransactionTimeoutQueue) {}
 
   /**
    * Lắng nghe event khi PayOS payment link được tạo
@@ -64,10 +64,9 @@ export class QueueListener {
 
     if (payload.shouldCancelTimeout) {
       try {
-        const cancelled =
-          await this.queueService.cancelTransactionTimeout(
-            payload.transactionId,
-          );
+        const cancelled = await this.queueService.cancelTransactionTimeout(
+          payload.transactionId,
+        );
 
         if (cancelled) {
           this.logger.log(
@@ -83,4 +82,3 @@ export class QueueListener {
     }
   }
 }
-
