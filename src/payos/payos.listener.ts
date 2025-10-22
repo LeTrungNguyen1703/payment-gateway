@@ -44,15 +44,19 @@ export class PayosListener {
         gateway_response: paymentResponse,
       });
 
-      const paymentLinkCreated: PaymentCreatedLinkEventDto = {
+      const paymentCreatedLink: PaymentCreatedLinkEventDto = {
         userId: payload.userId,
         transactionId: payload.transactionId,
         checkoutUrl: paymentResponse.data.checkoutUrl,
         qrCode: paymentResponse.data.qrCode,
       };
 
-      // Emit event để notify user
-      this.emitter.emit(EVENTS.PAYMENT.LINK_CREATED, paymentLinkCreated);
+      // Emit event để notify user và schedule timeout job
+      this.emitter.emit(EVENTS.PAYMENT.LINK_CREATED, {
+        ...paymentCreatedLink,
+        orderCode: paymentResponse.data.orderCode, // Thêm orderCode để queue listener schedule timeout
+      });
+
     } catch (error) {
       // Update transaction failed
       await this.transactionService.update(payload.transactionId, {

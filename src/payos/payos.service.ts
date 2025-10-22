@@ -124,6 +124,28 @@ export class PayosService {
     }
   }
 
+  async cancelPayment(orderCode: number) {
+    const url = `https://api-merchant.payos.vn/v2/payment-requests/${orderCode}/cancel`;
+    const config = this.getXClientIdandXApiKeyHeaders();
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(url, {}, config),
+      );
+      this.logger.log(
+        `Payment cancelled for orderCode ${orderCode}`,
+        response.data,
+      );
+
+      return response.data;
+    } catch (error) {
+      this.logger.error(
+        `PayOS cancel payment failed for orderCode ${orderCode}: ${error.message}`,
+      );
+      throw new Error(`PayOS cancel payment failed: ${error.message}`);
+    }
+  }
+
   // Helper method **********************
 
   //helper method to get x-client-id and x-api-key headers

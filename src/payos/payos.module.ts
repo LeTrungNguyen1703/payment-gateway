@@ -8,6 +8,7 @@ import { TransactionModule } from '../transaction/transaction.module';
 @Module({
   providers: [PayosService, PayosListener],
   controllers: [PayosController],
-  imports:[HttpModule, TransactionModule],
+  imports: [HttpModule, TransactionModule],
+  exports: [PayosService],
 })
 export class PayosModule {}

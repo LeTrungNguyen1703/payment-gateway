@@ -12,6 +12,7 @@ import { AuthModule } from './auth/auth.module';
 import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 import { PayosModule } from './payos/payos.module';
 import { TransactionModule } from './transaction/transaction.module';
+import { QueueModule } from './queue/queue.module';
 import keycloakConfiguation from './keycloak/config/keycloak.configuation';
 import payosConfiguation from './payos/payos.configuation';
 import { EventEmitterModule } from '@nestjs/event-emitter';
@@ -33,6 +34,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
     PaymentMethodsModule,
     PayosModule,
     TransactionModule,
+    QueueModule,
     EventEmitterModule.forRoot(),
   ],
   controllers: [AppController],

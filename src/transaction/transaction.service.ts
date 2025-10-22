@@ -343,6 +343,19 @@ export class TransactionService {
         `Created transaction event with ID ${createdTransactionEvent.id} for transaction ID ${transaction.id}`,
       );
 
+      // Emit event để cancel timeout job nếu transaction đã hoàn thành hoặc thất bại
+      if (
+        transactionStatus === TransactionStatus.COMPLETED ||
+        transactionStatus === TransactionStatus.FAILED ||
+        transactionStatus === TransactionStatus.CANCELLED
+      ) {
+        this.emitter.emit(EVENTS.TRANSACTION.STATUS_UPDATED, {
+          transactionId: transaction.id,
+          status: transactionStatus,
+          shouldCancelTimeout: true,
+        });
+      }
+
       return updatedTransaction;
     });
   }
@@ -474,3 +487,4 @@ export class TransactionService {
     return transaction;
   }
 }
+
