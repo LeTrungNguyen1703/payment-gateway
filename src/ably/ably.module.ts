@@ -20,7 +20,7 @@ import { AblyController } from './ably.controller';
         const client = new Ably.Realtime({
           key: apiKey,
           // Optional: Config thêm
-          clientId: 'expense-backend', // ID của server
+          clientId: 'payos-backend', // ID của server
           echoMessages: false, // Không nhận lại message mình gửi
           queueMessages: true, // Queue messages khi offline
         });

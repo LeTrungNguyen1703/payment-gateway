@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import {
   CreateTransactionDto,
@@ -18,22 +19,23 @@ import {
 import { Prisma } from '@prisma/client';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EVENTS } from '../common/constants/events.constants';
-import { PayosWebhookBodyPayload } from '../payos/dto/payos-webhooks-body.payload';
 
 @Injectable()
 export class TransactionService {
+  private logger = new Logger(TransactionService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly emitter: EventEmitter2,
   ) {}
 
-  async create(createTransactionDto: CreateTransactionDto) {
+  async create(createTransactionDto: CreateTransactionDto, userId: string) {
     // Wrap trong transaction để đảm bảo atomicity
     return await this.prisma
       .$transaction(async (tx) => {
         // Verify user exists
         const user = await tx.users.findUnique({
-          where: { id: createTransactionDto.user_id },
+          where: { id: userId },
         });
 
         if (!user) {
@@ -50,7 +52,7 @@ export class TransactionService {
             throw new BadRequestException('Payment method not found');
           }
 
-          if (paymentMethod.user_id !== createTransactionDto.user_id) {
+          if (paymentMethod.user_id !== userId) {
             throw new BadRequestException(
               'Payment method does not belong to this user',
             );
@@ -60,7 +62,7 @@ export class TransactionService {
         // Create transaction với status PENDING
         const transaction = await tx.transactions.create({
           data: {
-            user_id: createTransactionDto.user_id,
+            user_id: userId,
             payment_method_id: createTransactionDto.payment_method_id,
             amount: createTransactionDto.amount,
             currency: createTransactionDto.currency || 'VND',
@@ -105,7 +107,6 @@ export class TransactionService {
       })
       .then(async (transaction) => {
         // Emit event SAU KHI transaction đã commit
-        // Emit với payload structure rõ ràng
         this.emitter.emit(EVENTS.TRANSACTION.CREATED, {
           transactionId: transaction.id,
           userId: transaction.user_id,
@@ -304,6 +305,7 @@ export class TransactionService {
   async updateGatewayResponse(
     external_transaction_id: number,
     gatewayResponse: any,
+    transactionStatus: TransactionStatus,
   ) {
     return this.prisma.$transaction(async (tx) => {
       const transaction = await tx.transactions.findFirst({
@@ -315,23 +317,33 @@ export class TransactionService {
         throw new NotFoundException('Transaction not found');
       }
 
-      await tx.transactions.updateMany({
+      const updatedTransaction = await tx.transactions.updateMany({
         where: { external_transaction_id },
         data: {
           gateway_response: gatewayResponse,
-          status: TransactionStatus.COMPLETED,
+          status: transactionStatus,
         },
       });
 
-      await tx.transaction_events.create({
+      this.logger.log(
+        `Updated ${updatedTransaction.count} transaction(s) with external_transaction_id ${external_transaction_id}`,
+      );
+
+      const createdTransactionEvent = await tx.transaction_events.create({
         data: {
           transaction_id: transaction.id,
           event_type: 'GATEWAY_RESPONSE_UPDATED',
           from_value: transaction.status,
-          to_value: TransactionStatus.COMPLETED,
+          to_value: transactionStatus,
           metadata: { updated_by: 'system' },
         },
       });
+
+      this.logger.log(
+        `Created transaction event with ID ${createdTransactionEvent.id} for transaction ID ${transaction.id}`,
+      );
+
+      return updatedTransaction;
     });
   }
 
@@ -442,5 +454,23 @@ export class TransactionService {
       failed,
       totalAmount: totalAmount._sum.amount || 0,
     };
+  }
+
+  async getUserIdByExternalTransactionId(orderCode: number) {
+    const transaction = await this.prisma.transactions.findFirst({
+      where: { external_transaction_id: orderCode },
+      select: {
+        user_id: true,
+        users: {
+          select: { full_name: true, email: true },
+        },
+      },
+    });
+
+    if (!transaction) {
+      throw new NotFoundException('Transaction not found');
+    }
+
+    return transaction;
   }
 }

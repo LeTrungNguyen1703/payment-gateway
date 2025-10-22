@@ -1,4 +1,13 @@
-import { IsNotEmpty, IsNumber, IsString, IsOptional, IsUUID, Min, IsEnum, IsIP } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsNumber,
+  IsString,
+  IsOptional,
+  IsUUID,
+  Min,
+  IsEnum,
+  IsIP,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum TransactionStatus {
@@ -8,22 +17,13 @@ export enum TransactionStatus {
   COMPLETED = 'completed',
   FAILED = 'failed',
   CANCELLED = 'cancelled',
-  REFUNDED = 'refunded'
+  REFUNDED = 'refunded',
 }
 
 export class CreateTransactionDto {
-  @ApiProperty({
-    description: 'User ID',
-    example: '123e4567-e89b-12d3-a456-426614174000',
-    format: 'uuid',
-  })
-  @IsNotEmpty()
-  @IsUUID()
-  user_id: string;
-
   @ApiPropertyOptional({
     description: 'Payment method ID',
-    example: '123e4567-e89b-12d3-a456-426614174001',
+    example: '5e965704-4097-4d37-8dd8-0745948f996b',
     format: 'uuid',
   })
   @IsOptional()
@@ -32,7 +32,7 @@ export class CreateTransactionDto {
 
   @ApiProperty({
     description: 'Transaction amount',
-    example: 100000,
+    example: 2000,
     minimum: 0,
   })
   @IsNotEmpty()

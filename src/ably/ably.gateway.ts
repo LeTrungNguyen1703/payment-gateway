@@ -6,8 +6,9 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import * as Ably from 'ably';
-import { RealtimeChannel } from 'ably';
 import { OnEvent } from '@nestjs/event-emitter';
+import { EVENTS, SOCKET_EVENTS } from '../common/constants/events.constants';
+import { PaymentSuccessEventDto } from '../payos/dto/payment-success-event.dto';
 
 @Injectable()
 export class AblyGateway implements OnModuleInit, OnModuleDestroy {
@@ -27,6 +28,53 @@ export class AblyGateway implements OnModuleInit, OnModuleDestroy {
     this.logger.log('✅ Ably Gateway initialized');
   }
 
+  @OnEvent(EVENTS.TRANSACTION.FAILED)
+  async handleTransactionFailedEvent(payload: {
+    transactionId: string;
+    userId: string;
+    reason: string;
+  }) {
+    this.logger.log(
+      `Handling event: ${EVENTS.TRANSACTION.FAILED} for transaction ${payload.transactionId}`,
+    );
+    await this.publishToUser(payload.userId, SOCKET_EVENTS.TRANSACTION.FAILED, {
+      transactionId: payload.transactionId,
+      reason: payload.reason,
+    });
+  }
+
+  @OnEvent(EVENTS.PAYMENT.LINK_CREATED)
+  async handlePaymentLinkCreatedEvent(payload: {
+    userId: string;
+    transactionId: string;
+    checkoutUrl: string;
+    qrCode: string;
+  }) {
+    this.logger.log(
+      `Handling event: ${EVENTS.PAYMENT.LINK_CREATED} for transaction ${payload.transactionId}`,
+    );
+    await this.publishToUser(
+      payload.userId,
+      SOCKET_EVENTS.PAYMENT.LINK_CREATED,
+      {
+        transactionId: payload.transactionId,
+        checkoutUrl: payload.checkoutUrl,
+        qrCode: payload.qrCode,
+      },
+    );
+  }
+
+  @OnEvent(EVENTS.PAYMENT.SUCCESS)
+  async handlePaymentSuccessEvent(payload: PaymentSuccessEventDto) {
+    this.logger.log(
+      `Handling event: ${EVENTS.PAYMENT.SUCCESS} for user ${payload.userId}`,
+    );
+    await this.publishToUser(payload.userId, SOCKET_EVENTS.PAYMENT.SUCCESS, {
+      amount: payload.amount,
+      message: payload.message,
+    });
+  }
+
   /**
    * ======================
    * HELPER METHODS
@@ -36,7 +84,7 @@ export class AblyGateway implements OnModuleInit, OnModuleDestroy {
   /**
    * Publish message to specific user (alternative pattern)
    */
-  async publishToUser(userId: number, eventName: string, data: any) {
+  async publishToUser(userId: string, eventName: string, data: any) {
     const userChannel = this.ablyClient.channels.get(`user:${userId}`);
 
     await userChannel.publish({

@@ -11,10 +11,14 @@ import { PayosWebhookBodyPayload } from './dto/payos-webhooks-body.payload';
 import { TransactionService } from '../transaction/transaction.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { EVENTS } from '../common/constants/events.constants';
+import { PaymentSuccessEventDto } from './dto/payment-success-event.dto';
+import { TransactionStatus } from '../transaction/dto/create-transaction.dto';
+import { PaymentFailedEventDto } from './dto/payment-failed-event.dto';
 
 @Injectable()
 export class PayosService {
   private readonly logger = new Logger(PayosService.name);
+
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
@@ -27,16 +31,8 @@ export class PayosService {
   ): Promise<PayosPaymentCreatedResponse> {
     const orderCode = Number(String(Date.now()).slice(-9));
     const url = `https://api-merchant.payos.vn/v2/payment-requests`;
-    const config = {
-      headers: {
-        'x-client-id': this.configService.getOrThrow<string>(
-          PAYOS_CONFIG_KEY.CLIENT_ID,
-        ),
-        'x-api-key': this.configService.getOrThrow<string>(
-          PAYOS_CONFIG_KEY.API_KEY,
-        ),
-      },
-    };
+    const config = this.getXClientIdandXApiKeyHeaders();
+
     const dataForSignature = {
       orderCode: orderCode,
       amount: body.amount,
@@ -57,6 +53,7 @@ export class PayosService {
         this.httpService.post(url, payload, config),
       );
       this.logger.log(response.data);
+
       return response.data;
     } catch (error) {
       throw new Error(`PayOS create payment failed: ${error.message}`);
@@ -64,14 +61,82 @@ export class PayosService {
   }
 
   async handleWebhook(payload: PayosWebhookBodyPayload) {
-    await this.transactionService.updateGatewayResponse(
-      payload.data.orderCode,
-      payload,
+    this.logger.log(
+      `handleWebhook: Received webhook for orderCode ${payload.data.orderCode}`,
     );
 
-    this.emitter.emit(EVENTS.PAYMENT.SUCCESS, {
-      message: 'Payment successful',
-      data: payload,
-    });
+    const user = await this.transactionService.getUserIdByExternalTransactionId(
+      payload.data.orderCode,
+    );
+
+    // If webhook Payos is for successful payment
+    if (payload.code == '00') {
+      this.logger.log(
+        `handleWebhook: Payment successful for orderCode ${payload.data.orderCode}`,
+      );
+      await this.transactionService.updateGatewayResponse(
+        payload.data.orderCode,
+        payload,
+        TransactionStatus.COMPLETED,
+      );
+
+      const data: PaymentSuccessEventDto = {
+        userId: user.user_id,
+        email: user.users.email,
+        fullName: user.users.full_name,
+        amount: payload.data.amount,
+        message: 'Payment successful',
+      };
+      this.emitter.emit(EVENTS.PAYMENT.SUCCESS, data);
+    } else {
+      this.logger.log(
+        `handleWebhook: Payment failed for orderCode ${payload.data.orderCode} with code ${payload.code}`,
+      );
+      await this.transactionService.updateGatewayResponse(
+        payload.data.orderCode,
+        payload,
+        TransactionStatus.FAILED,
+      );
+
+      const data: PaymentFailedEventDto = {
+        userId: user.user_id,
+        email: user.users.email,
+        fullName: user.users.full_name,
+        amount: payload.data.amount,
+        reason: `Payment failed with code: ${payload.code} - ${payload.desc}`,
+      };
+
+      this.emitter.emit(EVENTS.PAYMENT.FAILED, data);
+    }
+  }
+
+  async getInvoice(orderCode: string) {
+    const url = `https://api-merchant.payos.vn/v2/payment-requests/${orderCode}`;
+    const config = this.getXClientIdandXApiKeyHeaders();
+
+    try {
+      const response = await firstValueFrom(this.httpService.get(url, config));
+      this.logger.log(response.data);
+
+      return response.data;
+    } catch (error) {
+      throw new Error(`PayOS get invoice failed: ${error.message}`);
+    }
+  }
+
+  // Helper method **********************
+
+  //helper method to get x-client-id and x-api-key headers
+  private getXClientIdandXApiKeyHeaders() {
+    return {
+      headers: {
+        'x-client-id': this.configService.getOrThrow<string>(
+          PAYOS_CONFIG_KEY.CLIENT_ID,
+        ),
+        'x-api-key': this.configService.getOrThrow<string>(
+          PAYOS_CONFIG_KEY.API_KEY,
+        ),
+      },
+    };
   }
 }

@@ -3,6 +3,7 @@ export const EVENTS = {
     CREATED: 'transaction.created',
     UPDATED: 'transaction.updated',
     DELETED: 'transaction.deleted',
+    FAILED: 'transaction.failed',
   },
   PAYMENT: {
     LINK_CREATED: 'payment.link_created',
@@ -16,6 +17,7 @@ export const SOCKET_EVENTS = {
     CREATED: 'transaction:created',
     UPDATED: 'transaction:updated',
     DELETED: 'transaction:deleted',
+    FAILED: 'transaction:failed',
   },
   PAYMENT: {
     LINK_CREATED: 'payment:link_created',

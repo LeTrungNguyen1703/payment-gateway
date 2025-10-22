@@ -1,11 +1,9 @@
-import { PartialType, OmitType } from '@nestjs/mapped-types';
+import { PartialType } from '@nestjs/mapped-types';
 import { CreateTransactionDto } from './create-transaction.dto';
 import { IsOptional, IsString, IsNumber } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
-export class UpdateTransactionDto extends PartialType(
-  OmitType(CreateTransactionDto, ['user_id'] as const),
-) {
+export class UpdateTransactionDto extends PartialType(CreateTransactionDto) {
   @ApiPropertyOptional({
     description: 'External transaction ID from payment gateway',
     example: 'PAYOS_123456789',

@@ -5,6 +5,8 @@ import { PayosService } from './payos.service';
 import { EVENTS } from '../common/constants/events.constants';
 import { TransactionService } from '../transaction/transaction.service';
 import { TransactionStatus } from '../transaction/dto/create-transaction.dto';
+import { PaymentCreatedLinkEventDto } from './dto/payment-created-link-event.dto';
+import { PaymentFailedEventDto } from './dto/payment-failed-event.dto';
 
 @Injectable()
 export class PayosListener {
@@ -42,11 +44,15 @@ export class PayosListener {
         gateway_response: paymentResponse,
       });
 
-      // Emit event để notify user
-      this.emitter.emit(EVENTS.PAYMENT.LINK_CREATED, {
+      const paymentLinkCreated: PaymentCreatedLinkEventDto = {
+        userId: payload.userId,
         transactionId: payload.transactionId,
         checkoutUrl: paymentResponse.data.checkoutUrl,
-      });
+        qrCode: paymentResponse.data.qrCode,
+      };
+
+      // Emit event để notify user
+      this.emitter.emit(EVENTS.PAYMENT.LINK_CREATED, paymentLinkCreated);
     } catch (error) {
       // Update transaction failed
       await this.transactionService.update(payload.transactionId, {
@@ -57,7 +63,14 @@ export class PayosListener {
         },
       });
 
-      //Todo : Emit event to notify failure
+      const paymentFailedEvent: PaymentFailedEventDto = {
+        userId: payload.userId,
+        amount: payload.amount,
+        reason: `Payment creation failed: ${error.message}`,
+      };
+
+      // Emit event để notify user
+      this.emitter.emit(EVENTS.TRANSACTION.FAILED, paymentFailedEvent);
     }
   }
 }

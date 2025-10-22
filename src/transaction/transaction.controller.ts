@@ -1,13 +1,39 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ValidationPipe, HttpCode, HttpStatus, ParseUUIDPipe } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam, ApiQuery } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  ValidationPipe,
+  HttpCode,
+  HttpStatus,
+  ParseUUIDPipe, UseGuards,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
+} from '@nestjs/swagger';
 import { TransactionService } from './transaction.service';
 import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { QueryTransactionDto } from './dto/query-transaction.dto';
-import { TransactionResponse, TransactionStatsResponse } from './interfaces/transaction-response.interface';
+import {
+  TransactionResponse,
+  TransactionStatsResponse,
+} from './interfaces/transaction-response.interface';
+import { CurrentDbUserId } from '../user/decorators/current-user.decorator';
+import { DbUserGuard } from '../user/guards/db-user.guard';
 
 @ApiTags('transactions')
 @Controller('transaction')
+@UseGuards(DbUserGuard)
 export class TransactionController {
   constructor(private readonly transactionService: TransactionService) {}
 
@@ -16,26 +42,31 @@ export class TransactionController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Create a new transaction',
-    description: 'Creates a new transaction record. Validates that user and payment method exist.'
+    description:
+      'Creates a new transaction record. Validates that user and payment method exist.',
   })
   @ApiResponse({
     status: 201,
     description: 'Transaction created successfully',
-    type: TransactionResponse
+    type: TransactionResponse,
   })
   @ApiResponse({
     status: 400,
-    description: 'Bad request - Invalid data or user/payment method not found'
+    description: 'Bad request - Invalid data or user/payment method not found',
   })
-  create(@Body(ValidationPipe) createTransactionDto: CreateTransactionDto) {
-    return this.transactionService.create(createTransactionDto);
+  create(
+    @Body(ValidationPipe) createTransactionDto: CreateTransactionDto,
+    @CurrentDbUserId() userId: string,
+  ) {
+    return this.transactionService.create(createTransactionDto, userId);
   }
 
   @Get()
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get all transactions with pagination and filters',
-    description: 'Returns a paginated list of transactions. Supports filtering by user, status, gateway, date range, etc.'
+    description:
+      'Returns a paginated list of transactions. Supports filtering by user, status, gateway, date range, etc.',
   })
   @ApiResponse({
     status: 200,
@@ -62,7 +93,8 @@ export class TransactionController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get transaction statistics',
-    description: 'Returns aggregated statistics for transactions. Optionally filter by user.'
+    description:
+      'Returns aggregated statistics for transactions. Optionally filter by user.',
   })
   @ApiQuery({
     name: 'user_id',
@@ -73,7 +105,7 @@ export class TransactionController {
   @ApiResponse({
     status: 200,
     description: 'Returns transaction statistics',
-    type: TransactionStatsResponse
+    type: TransactionStatsResponse,
   })
   getStats(@Query('user_id') userId?: string) {
     return this.transactionService.getTransactionStats(userId);
@@ -83,7 +115,7 @@ export class TransactionController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get transactions for a specific user',
-    description: 'Returns paginated transactions for the specified user ID'
+    description: 'Returns paginated transactions for the specified user ID',
   })
   @ApiParam({
     name: 'userId',
@@ -96,7 +128,7 @@ export class TransactionController {
   })
   findByUser(
     @Param('userId', new ParseUUIDPipe({ version: '4' })) userId: string,
-    @Query(ValidationPipe) queryDto: QueryTransactionDto
+    @Query(ValidationPipe) queryDto: QueryTransactionDto,
   ) {
     return this.transactionService.findByUser(userId, queryDto);
   }
@@ -105,7 +137,8 @@ export class TransactionController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Get transaction by ID',
-    description: 'Returns detailed transaction information including user, payment method, events, and refunds'
+    description:
+      'Returns detailed transaction information including user, payment method, events, and refunds',
   })
   @ApiParam({
     name: 'id',
@@ -115,11 +148,11 @@ export class TransactionController {
   @ApiResponse({
     status: 200,
     description: 'Returns transaction details',
-    type: TransactionResponse
+    type: TransactionResponse,
   })
   @ApiResponse({
     status: 404,
-    description: 'Transaction not found'
+    description: 'Transaction not found',
   })
   findOne(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     return this.transactionService.findOne(id);
@@ -129,7 +162,8 @@ export class TransactionController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Update transaction',
-    description: 'Updates transaction details. Auto-creates status change events. Sets completed_at when status changes to completed.'
+    description:
+      'Updates transaction details. Auto-creates status change events. Sets completed_at when status changes to completed.',
   })
   @ApiParam({
     name: 'id',
@@ -139,19 +173,19 @@ export class TransactionController {
   @ApiResponse({
     status: 200,
     description: 'Transaction updated successfully',
-    type: TransactionResponse
+    type: TransactionResponse,
   })
   @ApiResponse({
     status: 404,
-    description: 'Transaction not found'
+    description: 'Transaction not found',
   })
   @ApiResponse({
     status: 400,
-    description: 'Bad request - Invalid data'
+    description: 'Bad request - Invalid data',
   })
   update(
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
-    @Body(ValidationPipe) updateTransactionDto: UpdateTransactionDto
+    @Body(ValidationPipe) updateTransactionDto: UpdateTransactionDto,
   ) {
     return this.transactionService.update(id, updateTransactionDto);
   }
@@ -161,7 +195,8 @@ export class TransactionController {
   @ApiBearerAuth('access-token')
   @ApiOperation({
     summary: 'Delete transaction',
-    description: 'Deletes a transaction. Cannot delete transactions with existing refunds.'
+    description:
+      'Deletes a transaction. Cannot delete transactions with existing refunds.',
   })
   @ApiParam({
     name: 'id',
@@ -180,11 +215,11 @@ export class TransactionController {
   })
   @ApiResponse({
     status: 404,
-    description: 'Transaction not found'
+    description: 'Transaction not found',
   })
   @ApiResponse({
     status: 400,
-    description: 'Cannot delete transaction with existing refunds'
+    description: 'Cannot delete transaction with existing refunds',
   })
   remove(@Param('id', new ParseUUIDPipe({ version: '4' })) id: string) {
     return this.transactionService.remove(id);
