@@ -9,6 +9,7 @@ import * as Ably from 'ably';
 import { OnEvent } from '@nestjs/event-emitter';
 import { EVENTS, SOCKET_EVENTS } from '../common/constants/events.constants';
 import { PaymentSuccessEventDto } from '../payos/dto/payment-success-event.dto';
+import { PaymentFailedEventDto } from '../payos/dto/payment-failed-event.dto';
 
 @Injectable()
 export class AblyGateway implements OnModuleInit, OnModuleDestroy {
@@ -29,11 +30,7 @@ export class AblyGateway implements OnModuleInit, OnModuleDestroy {
   }
 
   @OnEvent(EVENTS.TRANSACTION.FAILED)
-  async handleTransactionFailedEvent(payload: {
-    transactionId: string;
-    userId: string;
-    reason: string;
-  }) {
+  async handleTransactionFailedEvent(payload: PaymentFailedEventDto) {
     this.logger.log(
       `Handling event: ${EVENTS.TRANSACTION.FAILED} for transaction ${payload.transactionId}`,
     );

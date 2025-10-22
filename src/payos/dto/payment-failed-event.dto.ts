@@ -2,6 +2,7 @@ export interface PaymentFailedEventDto {
   userId: string;
   email?: string | null;
   fullName?: string | null;
-  amount: number;
+  amount?: number;
   reason: string;
+  transactionId?: string;
 }

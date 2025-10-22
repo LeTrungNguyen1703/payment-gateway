@@ -103,7 +103,7 @@ export class PayosService {
         email: user.users.email,
         fullName: user.users.full_name,
         amount: payload.data.amount,
-        reason: `Payment failed with code: ${payload.code} - ${payload.desc}`,
+        reason: `Payment failed with code: ${payload.code} - ${payload.desc}`
       };
 
       this.emitter.emit(EVENTS.PAYMENT.FAILED, data);
